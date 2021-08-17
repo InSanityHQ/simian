@@ -5,6 +5,7 @@
 ;; https://en.wikipedia.org/wiki/Operational_transformation
 
 (ns simian.ot
+    (:require [simian.utils :as utils])
     (:import [java.security MessageDigest]))
 
 ;; -------- cryptography: 
@@ -15,30 +16,88 @@
   (let [digest (.digest (MessageDigest/getInstance "SHA-256") (.getBytes string "UTF-8"))]
     (apply str (map (partial format "%02x") digest))))
 
-(defn record-hash [record] (sha256 (str (:location record) 
-                                        (:action record)
-                                        (:time record))))
+(def hash-record (memoize #(sha256 (str %))))
 
-(def root-hash (memoize #(sha256 (str -1 ::root -1))))
+(def root-hash (hash-record ::root))
 
+(defn verify-root [obj] (= (:previous obj) root-hash))
 
-(defn verify-root [obj] (= (root-hash) obj))
-
-;; -------- edit objects:
+;; -------- records:
 
 (defn record [action payload & {:keys [at from] 
-              :or {from {:time -1
-              :action ::root
-              :lbcation -1
-              :previous -1}}}]
+              :or {from ::root}}]
   {:time (System/currentTimeMillis)
    :action (case action
              :insert ::insert
              :delete ::delete
-             :move ::move)
+             :default ::invalid)
    :payload payload
    :location at
    :previous (hash-record from)}) 
 
+;; -------- document operations
+
+(defmulti operate 
+  "Apply a task to data. Don't call directly or 
+   else no OT for you."
+
+  (fn [task 
+       location 
+       payload
+       data] task))
+
+(defmethod operate ::insert
+  [_ location payload data]
+  (str (subs data 0 location) 
+       payload 
+       (subs data location (count data))))
+
+(defmethod operate ::delete
+  [_ location payload data]
+  (str (subs data 0 location) 
+       (subs data 
+             (+ location payload) 
+             (count data))))
+
+;; -------- ledger operations
+
+(defn generate-dummy-ledger 
+  "Generate a dummy ledger. Used for testing and for fun."
+
+  [n] 
+  (into [] 
+        (take (+ n 1) 
+              (iterate 
+                #(record :delete (rand-int 50) :at 2 :from %) 
+                ::root))))
+
+(defn verify-ledger
+  "Verify the integrity of a ledger."
+
+  [ledger]
+  (and (char-array)
+       (reduce = (utils/double-map 
+                   #(= (hash-record %1) (:previous %2))
+                   ledger))))
+
+(defn record-fuzz
+  "Generate a decimal from record hash to break sorts"
+
+  [record]
+
+  (if (= record ::root) 0 
+      (float (/ (reduce + 
+                        (take 5 (map int (seq (hash-record record))))) 
+                10000))))
+
+(defn sort-ledger
+  "Sort ledger by application order"
+
+  [ledger]
+  (sort-by #(+ (:time %) (record-fuzz %)) ledger))
+
+(sort-ledger dummy-ledger)
+
+;; -------- record application
 
 
