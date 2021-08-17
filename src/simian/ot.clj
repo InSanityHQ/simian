@@ -75,7 +75,7 @@
   "Verify the integrity of a ledger."
 
   [ledger]
-  (and (char-array)
+  (and (= (-> ledger first str sha256) root-hash)
        (reduce = (utils/double-map 
                    #(= (hash-record %1) (:previous %2))
                    ledger))))
@@ -85,18 +85,19 @@
 
   [record]
 
-  (if (= record ::root) 0 
+  (if (= record ::root) 0
       (float (/ (reduce + 
                         (take 5 (map int (seq (hash-record record))))) 
                 10000))))
 
-(defn sort-ledger
-  "Sort ledger by application order"
+(defn sort-records
+  "Sort records by application order. 
+   Note that returned object is not a valid ledger."
 
-  [ledger]
-  (sort-by #(+ (:time %) (record-fuzz %)) ledger))
+  [records]
+  (sort-by #(+ (or (:time %) 0) (record-fuzz %)) records))
 
-(sort-ledger dummy-ledger)
+
 
 ;; -------- record application
 
