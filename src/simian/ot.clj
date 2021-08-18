@@ -8,7 +8,7 @@
     (:require [simian.utils :as utils])
     (:import [java.security MessageDigest]))
 
-;; -------- cryptography: 
+;; -------- cryptography
 
 (defn sha256 
   "SHA-256 a la https://gist.github.com/kubek2k/8446062"
@@ -22,7 +22,7 @@
 
 (defn verify-root [obj] (= (:previous obj) root-hash))
 
-;; -------- records:
+;; -------- records
 
 (defn record [action payload & {:keys [at from] 
               :or {from ::root}}]
@@ -97,8 +97,49 @@
   [records]
   (sort-by #(+ (or (:time %) 0) (record-fuzz %)) records))
 
+;; -------- record correction
+
+(defmulti record-influence
+  "Get the influence size of record."
+
+  (fn [record] (:action record)))
+
+(defmethod record-influence ::insert
+  [record]
+  (-> record :payload count))
+
+(defmethod record-influence ::delete
+  [record]
+  (-> record :payload))
+
+(defn generate-ticket
+  "Generate action tickets based on a bunch
+   of correctly-sorted records based on the same root."
+
+  [records]
+  (assert (apply = (map :previous records)) 
+          "Records are not based on the same root!")
+  (let [processing (first records)
+        queue (rest records)
+        cursor (:location processing)
+        influence (if (= (:action processing) ::delete) 
+                      (* -1 (record-influence processing)) 
+                      (record-influence processing))]
+    (map #(if (>= (:location %) cursor)
+              (assoc % :location (+ (:location %) influence))
+              %) queue)))
 
 
-;; -------- record application
+(generate-ticket 
+  [(record :insert "chicken" :at 12)
+   (record :delete 4 :at 12)
+   (record :insert "chciha" :at 2)
+   (record :delete 8 :at 15)])
+
+
+
+(record-fuzz (-> dummy-ledger rest rest first))
+
+(sort-records  dummy-ledger) 
 
 
