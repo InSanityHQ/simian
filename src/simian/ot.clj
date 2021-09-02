@@ -107,7 +107,7 @@
 ;; the edits that would render similar states have been
 ;; downloaded and applied.
 ;;
-;; # User Story
+;; # A technical story...
 ;; Goal: Alice wants to write "cheeze".
 ;;
 ;; 1. Her local buffer becomes populated with the word cheeze.
