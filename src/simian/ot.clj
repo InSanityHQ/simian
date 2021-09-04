@@ -5,8 +5,8 @@
 ;; https://en.wikipedia.org/wiki/Operational_transformation
 
 (ns simian.ot
-    (:require [simian.utils :as utils])
-    (:import [java.security MessageDigest]))
+  (:require [simian.utils :as utils])
+  (:import [java.security MessageDigest]))
 
 ;; -------- cryptography
 
@@ -24,16 +24,20 @@
 
 ;; -------- records
 
-(defn record [action payload & {:keys [at from] 
-              :or {from ::root}}]
-  {:time (System/currentTimeMillis)
-   :action (case action
-             :insert ::insert
-             :delete ::delete
-             :default ::invalid)
-   :payload payload
-   :location at
-   :previous (hash-record from)}) 
+(defmacro record [action & {:keys [payload at from] 
+                            :or {from ::root}}]
+  `{:time ~(System/currentTimeMillis)
+    :action ~(case (keyword action)
+               :insert ::insert
+               :delete ::delete
+               :default ::invalid)
+    :payload ~payload
+    :location ~at
+    :previous (hash-record ~from)
+    :index (let [previndx# (get ~from :index)]
+             (if (int? previndx#)
+               (+ 1 previndx#)
+               0))})
 
 ;; -------- document operations
 
@@ -41,22 +45,26 @@
   "Apply a task to data. Don't call directly or 
    else no OT for you."
 
-  (fn [task 
-       location 
-       payload
-       data] task))
+  (fn
+    ([task 
+      location 
+      data] task)
+    ([task
+      location
+      data
+      payload] task)))
 
 (defmethod operate ::insert
-  [_ location payload data]
-  (str (subs data 0 location) 
-       payload 
+  [_ location data payload]
+  (str (subs data 0 location)
+       payload
        (subs data location (count data))))
 
 (defmethod operate ::delete
-  [_ location payload data]
+  [_ location data]
   (str (subs data 0 location) 
        (subs data 
-             (+ location payload) 
+             (+ location 1) 
              (count data))))
 
 ;; -------- ledger operations
@@ -68,7 +76,7 @@
   (into [] 
         (take (+ n 1) 
               (iterate 
-                #(record :delete (rand-int 50) :at 2 :from %) 
+                #(record delete :at 2 :from %) 
                 ::root))))
 
 (defn verify-ledger
@@ -77,8 +85,11 @@
   [ledger]
   (and (= (-> ledger first str sha256) root-hash)
        (reduce = (utils/double-map 
-                   #(= (hash-record %1) (:previous %2))
-                   ledger))))
+                  #(= (hash-record %1) (:previous %2))
+                  ledger))))
+
+
+(verify-ledger (update test-ledger 3 #(assoc % :index 13)))
 
 (defn record-fuzz
   "Generate a decimal from record hash to break sorts"
@@ -177,7 +188,7 @@
 ;;               (assoc % :location (+ (:location %) influence))
 ;;               %) queue)))
 
-(record :insert "haahaa" :at 12)
+;; (record :insert "haahaa" :at 12)
 
 ;(record-fuzz (-> dummy-ledger rest rest first))
 
